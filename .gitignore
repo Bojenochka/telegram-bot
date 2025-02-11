@@ -1,0 +1,8 @@
+mistral_model/
+offload/
+results/
+trained_model/
+__pycache__/
+*.csv
+*.xlsx
+.idea/
