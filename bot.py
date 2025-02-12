@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # 🔹 Настройки Google Sheets
 GOOGLE_SHEETS_FOLDER_ID = "1B2OErx-Ch_c-BktZ8KyoFPGJqruAi--4"  # 📂 ID папки Google Drive
-SERVICE_ACCOUNT_FILE = "google_sheets_creds.json"  # 📄 JSON с ключами
+SERVICE_ACCOUNT_FILE = "/etc/secrets/google_sheets_creds.json"
 
 # Подключение к Google API
 creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=[
