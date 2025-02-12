@@ -1,101 +1,94 @@
-import asyncio
 import logging
-import pandas as pd
-import torch
-from datetime import datetime
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
+import os
+import datetime
+import gspread
+from google.oauth2.service_account import Credentials
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-import nest_asyncio  # Фикс ошибки "This event loop is already running"
+from telegram.ext import Updater, MessageHandler, Filters, CallbackContext
 
-# 🔹 Настройки бота
-TOKEN = "7820174844:AAEpPab-Wt7iNSO0GkEjEdSKrYpNju3G8Z0"
-GROUP_ID = -1002298203209  # Укажи ID группы
-EXCEL_FILE = "filtered_messages_context.xlsx"
+# 🔹 Логирование
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# 🔹 Настройка логирования
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
+# 🔹 Настройки Google Sheets
+GOOGLE_SHEETS_FOLDER_ID = "1B2OErx-Ch_c-BktZ8KyoFPGJqruAi--4"  # 📂 ID папки Google Drive
+SERVICE_ACCOUNT_FILE = "google_sheets_creds.json"  # 📄 JSON с ключами
 
-# 🔹 Загрузка обученной модели
-model_path = "./trained_model"  # Путь к сохраненной модели
-device = torch.device("mps") if torch.backends.mps.is_built() else "cpu"
+# Подключение к Google API
+creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=[
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+])
+gc = gspread.authorize(creds)
 
-tokenizer = AutoTokenizer.from_pretrained(model_path)
-model = AutoModelForSequenceClassification.from_pretrained(model_path).to(device)
+def create_or_get_sheet():
+    """Создает новый Google Sheet или получает существующий."""
+    today = datetime.datetime.now().strftime("%Y-%m-%d")
+    file_name = f"bot_{today}"
 
-# 🔹 Функция анализа текста через обученную модель
-def classify_message_with_context(text):
-    """Определяет тип сообщения: Проблема, Предложение, Другое."""
-    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding="max_length", max_length=128).to(device)
+    # 🔍 Проверяем, есть ли уже созданный файл
+    try:
+        sh = gc.open(file_name)
+        logger.info(f"Используем существующую таблицу: {file_name}")
+        return sh
+    except gspread.exceptions.SpreadsheetNotFound:
+        pass
 
-    with torch.no_grad():
-        outputs = model(**inputs)
+    # 📌 Если нет — создаем новую Google Таблицу
+    sh = gc.create(file_name)
+    sh.share("telegram-bot-service@telegram-bot-sheets-450709.iam.gserviceaccount.com", perm_type="user", role="writer")
 
-    predicted_label = torch.argmax(outputs.logits, dim=1).item()
-    label_map = {0: "Проблема", 1: "Предложение", 2: "Другое"}
-
-    return label_map.get(predicted_label, "Другое")
-
-# 🔹 Команда /start
-async def start(update: Update, context: CallbackContext):
-    await update.message.reply_text(
-        "Привет! Я анализирую сообщения из группы и сохраняю проблемы и предложения в Excel."
+    # 📂 Перемещаем в нужную папку
+    drive_service = creds.with_scopes(["https://www.googleapis.com/auth/drive"])
+    file = sh.spreadsheet_id
+    gc.request(
+        "PATCH",
+        f"https://www.googleapis.com/drive/v3/files/{file}",
+        json={"parents": [GOOGLE_SHEETS_FOLDER_ID]},
     )
 
-# 🔹 Функция обработки сообщений
-async def handle_message(update: Update, context: CallbackContext):
-    if update.message and update.message.chat_id == GROUP_ID:
-        text = update.message.text
-        date = datetime.fromtimestamp(update.message.date.timestamp())
+    # ✏ Создаем заголовки в таблице
+    worksheet = sh.get_worksheet(0)
+    headers = ["Дата и время", "Название группы", "Имя/Ник", "ID чата", "ID сообщения", "Текст", "Категория", "О чем речь"]
+    worksheet.append_row(headers)
 
-        logging.info(f"📩 Получено сообщение: {text} | Дата: {date}")
+    logger.info(f"Создан новый файл: {file_name}")
+    return sh
 
-        # Классификация сообщения
-        message_type = classify_message_with_context(text)
+def save_message_to_sheet(update: Update, context: CallbackContext):
+    """Сохраняет сообщение в Google Sheets."""
+    message = update.message
+    chat = message.chat
 
-        if message_type != "Другое":
-            try:
-                df = pd.read_excel(EXCEL_FILE)
-            except FileNotFoundError:
-                df = pd.DataFrame(columns=["Дата", "Тип сообщения", "Сообщение"])
+    # 📌 Получаем таблицу на сегодня
+    sh = create_or_get_sheet()
+    worksheet = sh.get_worksheet(0)
 
-            # Добавление данных
-            new_row = {"Дата": date, "Тип сообщения": message_type, "Сообщение": text}
-            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+    # 📌 Данные о сообщении
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    group_name = chat.title if chat.type in ["group", "supergroup"] else "Личное сообщение"
+    username = message.from_user.username or message.from_user.full_name
+    chat_id = chat.id
+    message_id = message.message_id
+    text = message.text
+    category = ""  # 🔹 Можно добавить определение категории
+    summary = ""  # 🔹 Краткое описание
 
-            # Сохранение в Excel
-            df.to_excel(EXCEL_FILE, index=False, engine="openpyxl")
-            logging.info(f"✅ Сообщение сохранено в Excel: {new_row}")
+    # 📌 Записываем в таблицу
+    worksheet.append_row([now, group_name, username, chat_id, message_id, text, category, summary])
+    logger.info(f"Сообщение {message_id} сохранено в {sh.title}")
 
-# 🔹 Функция для обработки старых сообщений
-async def handle_old_messages(context: CallbackContext):
-    logging.info("🔄 Проверка старых сообщений...")
-    async for update in context.application.bot.get_updates(offset=None, timeout=10):
-        if update.message and update.message.chat_id == GROUP_ID:
-            await handle_message(update, context)
+def main():
+    """Запуск бота."""
+    TOKEN = "7820174844:AAEpPab-Wt7iNSO0GkEjEdSKrYpNju3G8Z0"  # 🔹 Замените на ваш токен
+    updater = Updater(TOKEN, use_context=True)
+    dp = updater.dispatcher
 
-# 🔹 Основная функция
-async def main():
-    application = Application.builder().token(TOKEN).build()
+    # 🔹 Обработчик всех сообщений из чатов
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, save_message_to_sheet))
 
-    # Добавляем обработчики
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.Chat(GROUP_ID) & filters.TEXT, handle_message))
+    updater.start_polling()
+    updater.idle()
 
-    # Настроим планировщик задач
-    scheduler = AsyncIOScheduler()
-    scheduler.add_job(handle_old_messages, "interval", minutes=5, args=[application])
-    scheduler.start()
-
-    logging.info("🤖 Бот запущен и анализирует сообщения...")
-
-    await application.run_polling()
-
-# 🔹 Запуск
 if __name__ == "__main__":
-    nest_asyncio.apply()
-    asyncio.run(main())
+    main()
