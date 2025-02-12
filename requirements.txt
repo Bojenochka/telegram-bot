@@ -1,0 +1,6 @@
+python-telegram-bot==20.0
+pandas
+openpyxl
+apscheduler
+torch
+transformers
