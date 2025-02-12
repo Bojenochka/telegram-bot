@@ -7,3 +7,4 @@ __pycache__/
 *.xlsx
 .idea/
 Api.py
+google_sheets_creds.json
