@@ -4,3 +4,4 @@ openpyxl
 apscheduler
 torch
 transformers
+nest_asyncio
