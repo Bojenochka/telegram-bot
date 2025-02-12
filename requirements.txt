@@ -5,3 +5,4 @@ apscheduler
 torch
 transformers
 nest_asyncio
+gspread
