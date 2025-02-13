@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 # 🔹 Настройки Google Sheets
 GOOGLE_SHEETS_FOLDER_ID = os.getenv("GOOGLE_SHEETS_FOLDER_ID")
-SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
+SERVICE_ACCOUNT_FILE = "/etc/secrets/google_sheets_creds.json"
 
 if not GOOGLE_SHEETS_FOLDER_ID or not SERVICE_ACCOUNT_FILE:
     raise ValueError("Переменные окружения GOOGLE_SHEETS_FOLDER_ID и SERVICE_ACCOUNT_FILE не установлены!")
