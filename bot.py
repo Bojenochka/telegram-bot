@@ -81,13 +81,13 @@ def save_message_to_sheet(update: Update, context: CallbackContext):
 def main():
     """Запуск бота."""
     TOKEN = "7820174844:AAEpPab-Wt7iNSO0GkEjEdSKrYpNju3G8Z0"  # 🔹 Замените на ваш токен
-    updater = Updater(TOKEN, use_context=True)
+    application = Application.builder().token(TOKEN).build()
     dp = updater.dispatcher
 
     # 🔹 Обработчик всех сообщений из чатов
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, save_message_to_sheet))
 
-    updater.start_polling()
+    application.run_polling()
     updater.idle()
 
 if __name__ == "__main__":
