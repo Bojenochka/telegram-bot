@@ -3,8 +3,8 @@ import os
 import datetime
 import gspread
 from google.oauth2.service_account import Credentials
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 
 # 🔹 Логирование
 logging.basicConfig(level=logging.INFO)
@@ -82,7 +82,7 @@ def main():
     """Запуск бота."""
     TOKEN = "7820174844:AAEpPab-Wt7iNSO0GkEjEdSKrYpNju3G8Z0"  # 🔹 Замените на ваш токен
     application = Application.builder().token(TOKEN).build()
-    dp = updater.dispatcher
+    dp = application
 
     # 🔹 Обработчик всех сообщений из чатов
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, save_message_to_sheet))
