@@ -4,6 +4,7 @@ import datetime
 import gspread
 from google.oauth2.service_account import Credentials
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram import Update
 
 # 🔹 Логирование
 logging.basicConfig(level=logging.INFO)
