@@ -54,7 +54,7 @@ def create_or_get_sheet():
     # Если таблицы нет — создаем новую
     try:
         sh = gc.create(file_name)
-        sh.share("telegram-bot-service@telegram-bot-sheets-450709.iam.gserviceaccount.com", perm_type="user", role="writer")
+        sh.share("grebennikova.ekaterina95@gmail.com", perm_type="user", role="writer")
 
         # Перемещаем в нужную папку Google Drive
         file = sh.spreadsheet_id
