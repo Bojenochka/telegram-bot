@@ -2,6 +2,7 @@ import logging
 import os
 import datetime
 import gspread
+import requests
 from google.oauth2.service_account import Credentials
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, CallbackContext
@@ -13,10 +14,18 @@ logger = logging.getLogger(__name__)
 # Читаем переменные окружения
 TOKEN = os.getenv("TOKEN")
 GOOGLE_SHEETS_FOLDER_ID = os.getenv("GOOGLE_SHEETS_FOLDER_ID")
-SERVICE_ACCOUNT_FILE = "/etc/secrets/google_sheets_creds.json"
+SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE", "/etc/secrets/google_sheets_creds.json")
 
-if not TOKEN or not GOOGLE_SHEETS_FOLDER_ID or not SERVICE_ACCOUNT_FILE:
-    raise ValueError("Переменные окружения TOKEN, GOOGLE_SHEETS_FOLDER_ID и SERVICE_ACCOUNT_FILE должны быть установлены!")
+# Логируем путь к файлу сервисного аккаунта
+logger.info(f"Путь к файлу сервисного аккаунта: {SERVICE_ACCOUNT_FILE}")
+
+# Проверяем, существует ли файл
+if not os.path.exists(SERVICE_ACCOUNT_FILE):
+    logger.error(f"Файл {SERVICE_ACCOUNT_FILE} не найден. Проверь путь!")
+    raise FileNotFoundError(f"Файл {SERVICE_ACCOUNT_FILE} не найден!")
+
+if not TOKEN or not GOOGLE_SHEETS_FOLDER_ID:
+    raise ValueError("Переменные окружения TOKEN и GOOGLE_SHEETS_FOLDER_ID должны быть установлены!")
 
 # Подключение к Google API
 try:
@@ -25,9 +34,21 @@ try:
         scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     )
     gc = gspread.authorize(creds)
+    logger.info("Успешное подключение к Google API!")
 except Exception as e:
     logger.error(f"Ошибка при подключении к Google API: {e}")
     raise
+
+# Функция перемещения файла в папку Google Drive
+def move_file_to_folder(file_id, folder_id, creds):
+    headers = {"Authorization": f"Bearer {creds.token}"}
+    url = f"https://www.googleapis.com/drive/v3/files/{file_id}?addParents={folder_id}&removeParents=root"
+    response = requests.patch(url, headers=headers)
+
+    if response.status_code == 200:
+        logger.info(f"Файл {file_id} перемещен в папку {folder_id}")
+    else:
+        logger.error(f"Ошибка перемещения файла: {response.text}")
 
 # Функция для создания или получения Google Sheet
 def create_or_get_sheet():
@@ -48,12 +69,7 @@ def create_or_get_sheet():
         sh.share("telegram-bot-service@telegram-bot-sheets-450709.iam.gserviceaccount.com", perm_type="user", role="writer")
 
         # Перемещаем в нужную папку Google Drive
-        file = sh.spreadsheet_id
-        gc.request(
-            "PATCH",
-            f"https://www.googleapis.com/drive/v3/files/{file}",
-            json={"parents": [GOOGLE_SHEETS_FOLDER_ID]},
-        )
+        move_file_to_folder(sh.spreadsheet_id, GOOGLE_SHEETS_FOLDER_ID, creds)
 
         # Создаем заголовки
         worksheet = sh.get_worksheet(0)
