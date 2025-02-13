@@ -7,12 +7,18 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 
 # 🔹 Логирование
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
 # 🔹 Настройки Google Sheets
-GOOGLE_SHEETS_FOLDER_ID = "1B2OErx-Ch_c-BktZ8KyoFPGJqruAi--4"  # 📂 ID папки Google Drive
-SERVICE_ACCOUNT_FILE = "/etc/secrets/google_sheets_creds.json"
+GOOGLE_SHEETS_FOLDER_ID = os.getenv("GOOGLE_SHEETS_FOLDER_ID")
+SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
+
+if not GOOGLE_SHEETS_FOLDER_ID or not SERVICE_ACCOUNT_FILE:
+    raise ValueError("Переменные окружения GOOGLE_SHEETS_FOLDER_ID и SERVICE_ACCOUNT_FILE не установлены!")
 
 # Подключение к Google API
 creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=[
@@ -39,7 +45,6 @@ def create_or_get_sheet():
     sh.share("telegram-bot-service@telegram-bot-sheets-450709.iam.gserviceaccount.com", perm_type="user", role="writer")
 
     # 📂 Перемещаем в нужную папку
-    drive_service = creds.with_scopes(["https://www.googleapis.com/auth/drive"])
     file = sh.spreadsheet_id
     gc.request(
         "PATCH",
@@ -80,15 +85,17 @@ def save_message_to_sheet(update: Update, context: CallbackContext):
 
 def main():
     """Запуск бота."""
-    TOKEN = "7820174844:AAEpPab-Wt7iNSO0GkEjEdSKrYpNju3G8Z0"  # 🔹 Замените на ваш токен
+    TOKEN = os.getenv("TOKEN")  # 🔹 Берем токен из переменных среды
+    if not TOKEN:
+        raise ValueError("Переменная окружения TOKEN не установлена!")
+
     application = Application.builder().token(TOKEN).build()
-    dp = application
 
     # 🔹 Обработчик всех сообщений из чатов
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, save_message_to_sheet))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, save_message_to_sheet))
 
+    logger.info("Бот запущен...")
     application.run_polling()
-    updater.idle()
 
 if __name__ == "__main__":
     main()
