@@ -25,3 +25,4 @@ tenacity==8.2.3
 tqdm==4.66.2
 typing-extensions==4.7.1  # Исправленная версия для aiogram 3.0.0
 urllib3==2.2.0
+Flask
