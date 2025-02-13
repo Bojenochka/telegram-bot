@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 # Читаем переменные окружения
 TOKEN = os.getenv("TOKEN")
 GOOGLE_SHEETS_FOLDER_ID = os.getenv("GOOGLE_SHEETS_FOLDER_ID")
-SERVICE_ACCOUNT_FILE = "/etc/secrets/google_sheets_creds.json"
+SERVICE_ACCOUNT_FILE = "/Users/ekaterinagoncarenok/PycharmProjects/PythonProject1/google_sheets_creds.json"
 
 if not TOKEN or not GOOGLE_SHEETS_FOLDER_ID or not SERVICE_ACCOUNT_FILE:
     raise ValueError("Переменные окружения TOKEN, GOOGLE_SHEETS_FOLDER_ID и SERVICE_ACCOUNT_FILE должны быть установлены!")
