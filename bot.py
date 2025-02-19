@@ -1,7 +1,6 @@
 import logging
 import os
 import datetime
-import requests
 import gspread
 from google.oauth2.service_account import Credentials
 from telegram import Update
@@ -9,7 +8,7 @@ from telegram.ext import Application, MessageHandler, filters, CallbackContext
 from telegram.error import TelegramError
 
 # Логирование
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Читаем переменные окружения
@@ -26,11 +25,6 @@ logger.info(f"✅ Путь к файлу сервисного аккаунта: 
 
 if not TOKEN or not GOOGLE_SHEETS_FOLDER_ID:
     raise ValueError("Переменные окружения TOKEN и GOOGLE_SHEETS_FOLDER_ID должны быть установлены!")
-
-# Удаляем вебхук перед запуском (чтобы избежать конфликта с polling)
-delete_webhook_url = f"https://api.telegram.org/bot{TOKEN}/deleteWebhook"
-response = requests.post(delete_webhook_url)
-logger.info(f"Удаление вебхука: {response.json()}")
 
 # Подключение к Google API
 try:
@@ -52,46 +46,30 @@ def create_or_get_sheet():
 
     try:
         sh = gc.open(file_name)
-        logger.info(f"📄 Используем существующую таблицу: {file_name} (https://docs.google.com/spreadsheets/d/{sh.id})")
-        return sh
-    except gspread.exceptions.SpreadsheetNotFound:
-        pass
-
-    # Если таблицы нет — создаем новую
-    try:
-        sh = gc.create(file_name)
-        sh.share("grebennikova.ekaterina95@gmail.com", perm_type="user", role="writer")
-
-        # Перемещаем в нужную папку Google Drive
-        file = sh.id  # Исправлено: sh.id, а не spreadsheet_id
-        gc.request(
-            "PATCH",
-            f"https://www.googleapis.com/drive/v3/files/{file}",
-            json={"parents": [GOOGLE_SHEETS_FOLDER_ID]},
-        )
-
-        # Создаем заголовки
         worksheet = sh.get_worksheet(0)
-        headers = ["Дата и время", "Название группы", "Имя/Ник", "ID чата", "ID сообщения", "Текст", "Категория", "Краткое описание"]
-        worksheet.append_row(headers)
+        logger.info(f"📄 Используем существующую таблицу: {file_name} (https://docs.google.com/spreadsheets/d/{sh.id})")
+    except gspread.exceptions.SpreadsheetNotFound:
+        try:
+            sh = gc.create(file_name)
+            sh.share("grebennikova.ekaterina95@gmail.com", perm_type="user", role="writer")
 
-        logger.info(f"✅ Создан новый файл: {file_name} (https://docs.google.com/spreadsheets/d/{sh.id})")
-        return sh
-    except Exception as e:
-        logger.error(f"❌ Ошибка при создании Google Sheet: {e}")
-        return None
+            # Перемещаем в нужную папку Google Drive
+            file = sh.spreadsheet_id
+            gc.request(
+                "PATCH",
+                f"https://www.googleapis.com/drive/v3/files/{file}",
+                json={"parents": [GOOGLE_SHEETS_FOLDER_ID]},
+            )
 
-# Функция для получения последнего сохраненного сообщения
-def get_last_message_id(worksheet):
-    """Получает ID последнего сохраненного сообщения."""
-    try:
-        records = worksheet.get_all_records()
-        if records:
-            return records[-1]["ID сообщения"]  # Последнее сообщение
-        return None
-    except Exception as e:
-        logger.error(f"❌ Ошибка при получении последнего ID сообщения: {e}")
-        return None
+            worksheet = sh.get_worksheet(0)
+            headers = ["Дата и время", "Название группы", "Имя/Ник", "ID чата", "ID сообщения", "Текст", "Категория", "Краткое описание"]
+            worksheet.append_row(headers)
+            logger.info(f"✅ Создан новый файл: {file_name} (https://docs.google.com/spreadsheets/d/{sh.id})")
+        except Exception as e:
+            logger.error(f"❌ Ошибка при создании Google Sheet: {e}")
+            return None
+
+    return worksheet
 
 # Функция для сохранения сообщений в таблицу
 async def save_message_to_sheet(update: Update, context: CallbackContext):
@@ -104,17 +82,9 @@ async def save_message_to_sheet(update: Update, context: CallbackContext):
     chat = message.chat
 
     # Получаем таблицу
-    sh = create_or_get_sheet()
-    if not sh:
+    worksheet = create_or_get_sheet()
+    if not worksheet:
         logger.error("❌ Ошибка: Не удалось получить Google Sheet")
-        return
-
-    worksheet = sh.get_worksheet(0)
-
-    # Проверяем последнее сохраненное сообщение
-    last_message_id = get_last_message_id(worksheet)
-    if last_message_id and int(last_message_id) >= message.message_id:
-        logger.info(f"🔄 Сообщение {message.message_id} уже записано, пропускаем")
         return
 
     # Данные о сообщении
@@ -124,12 +94,12 @@ async def save_message_to_sheet(update: Update, context: CallbackContext):
     chat_id = chat.id
     message_id = message.message_id
     text = message.text or "Без текста"
-    category = ""  # Можно добавить логику категорий
-    summary = ""   # Можно добавить логику краткого описания
+    category = ""
+    summary = ""
 
     try:
         worksheet.append_row([now, group_name, username, chat_id, message_id, text, category, summary])
-        logger.info(f"✅ Сообщение {message_id} сохранено в {sh.title}")
+        logger.info(f"✅ Сообщение {message_id} сохранено в Google Sheets")
     except Exception as e:
         logger.error(f"❌ Ошибка при записи в Google Sheets: {e}")
 
